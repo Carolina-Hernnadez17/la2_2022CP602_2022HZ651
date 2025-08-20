@@ -1,0 +1,9 @@
+servlet\EnfermedadServlet.class
+clases\Sintoma.class
+servlet\SintomaServlet.class
+servlet\DiagnosticoServlet.class
+servlet\PacienteServlet.class
+com\mycompany\lab2_kg_kl\JakartaRestConfiguration.class
+com\mycompany\lab2_kg_kl\resources\JakartaEE10Resource.class
+clases\Paciente.class
+clases\Enfermedad.class
