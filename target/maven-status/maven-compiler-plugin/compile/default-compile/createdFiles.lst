@@ -1,9 +1,11 @@
 servlet\EnfermedadServlet.class
 clases\Sintoma.class
 servlet\SintomaServlet.class
+servlet\ReporteServlet.class
+com\mycompany\lab2_2022CP602_2022HZ651\JakartaRestConfiguration.class
 servlet\DiagnosticoServlet.class
 servlet\PacienteServlet.class
-com\mycompany\lab2_kg_kl\JakartaRestConfiguration.class
-com\mycompany\lab2_kg_kl\resources\JakartaEE10Resource.class
 clases\Paciente.class
+com\mycompany\lab2_2022CP602_2022HZ651\resources\JakartaEE10Resource.class
+clases\Diagnostico.class
 clases\Enfermedad.class

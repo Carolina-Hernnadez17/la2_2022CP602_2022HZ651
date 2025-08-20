@@ -3,7 +3,9 @@
  */
 package servlet;
 
+import clases.Diagnostico;
 import clases.Enfermedad;
+import clases.Paciente;
 import clases.Sintoma;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -26,13 +28,14 @@ public class DiagnosticoServlet extends HttpServlet {
     protected void doPost(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
 
-        // Recuperar enfermedades y síntomas de sesión
         HttpSession session = request.getSession();
+
+        // Recuperar enfermedades y síntomas de sesión
         List<Enfermedad> enfermedades = (List<Enfermedad>) session.getAttribute("enfermedades");
         List<Sintoma> sintomas = (List<Sintoma>) session.getAttribute("sintomas");
 
-        List<String> resultadoExacto = new ArrayList<>();
-        List<Map.Entry<String, Double>> resultadoParcial = new ArrayList<>();
+        if (enfermedades == null) enfermedades = new ArrayList<>();
+        if (sintomas == null) sintomas = new ArrayList<>();
 
         // Síntomas reportados por el paciente
         List<String> sintomasPaciente = new ArrayList<>();
@@ -41,6 +44,9 @@ public class DiagnosticoServlet extends HttpServlet {
                 sintomasPaciente.add(s.getNombre_sintoma());
             }
         }
+
+        List<String> resultadoExacto = new ArrayList<>();
+        List<Map.Entry<String, Double>> resultadoParcial = new ArrayList<>();
 
         // Evaluar cada enfermedad
         for (Enfermedad e : enfermedades) {
@@ -52,38 +58,46 @@ public class DiagnosticoServlet extends HttpServlet {
                 boolean presenteEnfermedad = entry.getValue();
                 boolean presentePaciente = sintomasPaciente.contains(entry.getKey());
 
-                // Contar solo los síntomas que la enfermedad tiene y el paciente reporta
                 if (presenteEnfermedad && presentePaciente) {
                     sintomasCoincidentes++;
                 }
-
-                // Si algún síntoma de la enfermedad no coincide con el paciente, no es exacto
                 if (presenteEnfermedad != presentePaciente) {
                     coincideExacto = false;
                 }
             }
 
-            // Calcular porcentaje de confianza
-            double confianza = ((double) sintomasCoincidentes / total) * 100;
+            double confianza = total > 0 ? ((double) sintomasCoincidentes / total) * 100 : 0;
 
-            if (coincideExacto) {
-                resultadoExacto.add(e.getNombre());
-            } else if (confianza > 0) {
-                resultadoParcial.add(new AbstractMap.SimpleEntry<>(e.getNombre(), confianza));
-            }
+            if (coincideExacto) resultadoExacto.add(e.getNombre());
+            else if (confianza > 0) resultadoParcial.add(new AbstractMap.SimpleEntry<>(e.getNombre(), confianza));
         }
 
         // Ordenar resultados parciales y limitar a top 3
         resultadoParcial.sort((a, b) -> Double.compare(b.getValue(), a.getValue()));
-        if (resultadoParcial.size() > 3) {
-            resultadoParcial = resultadoParcial.subList(0, 3);
-        }
+        if (resultadoParcial.size() > 3) resultadoParcial = resultadoParcial.subList(0, 3);
 
-        // Guardar en request para mostrar en diagnostico.jsp
+        // Guardar resultados para diagnostico.jsp
         request.setAttribute("resultadoExacto", resultadoExacto);
         request.setAttribute("resultadoParcial", resultadoParcial);
 
-        // Guardar en sesión para uso en PacienteServlet
+        // Recuperar historial desde sesión
+        List<Diagnostico> historial = (List<Diagnostico>) session.getAttribute("historial");
+        if (historial == null) historial = new ArrayList<>();
+
+        // Recuperar paciente actual
+        Paciente paciente = (Paciente) session.getAttribute("pacienteActual");
+
+        // Guardar diagnóstico en historial
+        if (!resultadoExacto.isEmpty()) {
+            historial.add(new Diagnostico(paciente, resultadoExacto.get(0), true, 100));
+        } else if (!resultadoParcial.isEmpty()) {
+            Map.Entry<String, Double> mejor = resultadoParcial.get(0);
+            historial.add(new Diagnostico(paciente, mejor.getKey(), false, mejor.getValue()));
+        }
+
+        session.setAttribute("historial", historial);
+
+        // Guardar último diagnóstico en sesión
         if (!resultadoExacto.isEmpty()) {
             session.setAttribute("ultimoDiagnostico", resultadoExacto.get(0));
             session.removeAttribute("ultimaProbabilidad");
@@ -99,12 +113,57 @@ public class DiagnosticoServlet extends HttpServlet {
             session.removeAttribute("ultimaProbabilidad");
         }
 
-        // Redirigir a la vista de resultados
+        // Guardar paciente en la lista de pacientes
+        List<Paciente> pacientes = (List<Paciente>) session.getAttribute("pacientes");
+        if (pacientes == null) pacientes = new ArrayList<>();
+        pacientes.add(paciente);
+        session.setAttribute("pacientes", pacientes);
+
+        // Guardar estadísticas generales
+        int numPacientes = pacientes.size();
+        int numEnfermedades = enfermedades.size();
+        int numSintomas = sintomas.size();
+        int numDiagnosticos = historial.size();
+
+        String enfMasDiagnosticada = "";
+        int exactos = 0, parciales = 0;
+        double sumaConfParciales = 0;
+
+        if (!historial.isEmpty()) {
+            Map<String, Integer> conteo = new HashMap<>();
+            for (Diagnostico d : historial) {
+                // Conteo enfermedades
+                conteo.put(d.getEnfermedad(), conteo.getOrDefault(d.getEnfermedad(), 0) + 1);
+                // Exactos o parciales
+                if (d.isExacto()) exactos++;
+                else {
+                    parciales++;
+                    sumaConfParciales += d.getConfianza();
+                }
+            }
+            enfMasDiagnosticada = conteo.entrySet().stream()
+                                        .max(Map.Entry.comparingByValue())
+                                        .get()
+                                        .getKey();
+        }
+
+        double promConfParciales = parciales > 0 ? sumaConfParciales / parciales : 0;
+
+        session.setAttribute("numPacientes", numPacientes);
+        session.setAttribute("numEnfermedades", numEnfermedades);
+        session.setAttribute("numDiagnosticos", numDiagnosticos);
+        session.setAttribute("numSintomas", numSintomas);
+        session.setAttribute("enfMasDiagnosticada", enfMasDiagnosticada);
+        session.setAttribute("exactos", exactos);
+        session.setAttribute("parciales", parciales);
+        session.setAttribute("promConfParciales", promConfParciales);
+
+        // Redirigir a diagnostico.jsp
         request.getRequestDispatcher("diagnostico.jsp").forward(request, response);
     }
 
     @Override
     public String getServletInfo() {
-        return "Servlet que procesa síntomas y determina diagnóstico con porcentaje de confianza correcto";
+        return "Servlet que procesa síntomas y genera diagnóstico y estadísticas";
     }
 }
